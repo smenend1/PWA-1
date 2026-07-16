@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Circuits Mixtos · Tecnologia i Digitalització</title>
+<meta name="description" content="PWA offline per practicar el càlcul de circuits elèctrics mixtos. Genera exercicis, corregeix i avalua per competències (Decret 175/2022).">
+<meta name="theme-color" content="#0B1F33">
+
+<!-- ============================================================
+     ICONA (favicon en SVG codificat com a Data URI, sense xarxa)
+     ============================================================ -->
+<link id="faviconLink" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230B1F33'/%3E%3Cpath d='M8 32h10l4-10 8 20 4-10 8 10h14' stroke='%23C97D3E' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+
+<!-- ============================================================
+     MANIFEST DE LA PWA — es genera dinàmicament com a Data URL
+     més avall amb JavaScript i s'injecta en aquest <link>.
+     ============================================================ -->
+<link id="manifestLink" rel="manifest">
+
+<!-- Tailwind CSS via CDN (requerit per l'especificació). El Service
+     Worker s'encarregarà de deixar-lo en catxé la primera vegada
+     que hi hagi connexió perquè funcioni sense Internet més tard. -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Configuració de la paleta "esquema elèctric" de Tailwind
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          blueprint:  '#0B1F33', // blau pissarra fosc (fons esquema)
+          blueprint2: '#122A44',
+          paper:      '#F4EFE3', // paper crema clar
+          copper:     '#C97D3E', // coure — cable actiu / accent
+          copperdark: '#9C5A24',
+          signal:     '#3FA97E', // verd senyal — correcte
+          alert:      '#C1443B', // vermell òxid — error
+        },
+        fontFamily: {
+          mono: ['ui-monospace','SFMono-Regular','Consolas','Menlo','monospace'],
+          sans: ['ui-sans-serif','system-ui','Segoe UI','Roboto','Arial','sans-serif'],
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  /* ============================================================
+     ESTILS BASE I VARIABLES D'ACCESSIBILITAT (DUA - Decret 150/2017)
+     ============================================================ */
+  html { scroll-behavior: smooth; }
+  body { transition: background-color .25s ease, color .25s ease; }
+
+  /* Focus de teclat sempre visible (accessibilitat) */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+    outline: 3px solid #C97D3E;
+    outline-offset: 2px;
+  }
+
+  /* --- Mode "Lectura Facilitada": tipografia gran, sense serifa,
+     interlineat generós i més espai entre lletres (estil DUA) --- */
+  body.lectura-facil, body.lectura-facil input, body.lectura-facil select, body.lectura-facil button {
+    font-family: Arial, Verdana, "Segoe UI", sans-serif !important;
+    line-height: 1.9 !important;
+    letter-spacing: 0.02em !important;
+  }
+  body.lectura-facil p, body.lectura-facil li, body.lectura-facil label, body.lectura-facil span, body.lectura-facil td, body.lectura-facil th {
+    font-size: 1.15em !important;
+  }
+  body.lectura-facil h1 { font-size: 2.2em !important; }
+  body.lectura-facil h2 { font-size: 1.6em !important; }
+
+  /* --- Mode "Alt contrast": WCAG AAA (ratio >21:1) --- */
+  body.alt-contrast {
+    background: #000000 !important;
+    color: #FFFFFF !important;
+  }
+  body.alt-contrast .ac-panell {
+    background: #000000 !important;
+    color: #FFFFFF !important;
+    border: 2px solid #FFFF00 !important;
+  }
+  body.alt-contrast .ac-accent { color: #FFFF00 !important; }
+  body.alt-contrast button.ac-btn {
+    background: #FFFF00 !important;
+    color: #000000 !important;
+    border: 2px solid #FFFFFF !important;
+  }
+  body.alt-contrast input, body.alt-contrast select {
+    background: #000000 !important;
+    color: #FFFFFF !important;
+    border: 2px solid #FFFF00 !important;
+  }
+  body.alt-contrast svg .fil-schema { stroke: #FFFF00 !important; }
+  body.alt-contrast svg text { fill: #FFFFFF !important; }
+
+  /* Animació del corrent al circuit (respecta reduir moviment) */
+  .flux-corrent {
+    stroke-dasharray: 6 6;
+    animation: flux 1.1s linear infinite;
+  }
+  @keyframes flux { to { stroke-dashoffset: -24; } }
+  @media (prefers-reduced-motion: reduce) {
+    .flux-corrent { animation: none; }
+  }
+
+  /* Acordió natiu <details> amb fletxa animada */
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary .fletxa { transition: transform .2s ease; }
+  details[open] > summary .fletxa { transform: rotate(90deg); }
+
+  /* ============================================================
+     ESTILS D'IMPRESSIÓ — Fitxa neta (PDF / paper)
+     ============================================================ */
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #ffffff !important; color: #000000 !important; }
+    .print-card { box-shadow: none !important; border: 1px solid #999 !important; }
+    a[href]:after { content: "" !important; }
+  }
+</style>
+</head>
+
+<body class="bg-paper text-blueprint font-sans min-h-screen">
+
+<!-- ============================================================
+     CAPÇALERA
+     ============================================================ -->
+<header class="bg-blueprint text-paper">
+  <div class="max-w-6xl mx-auto px-4 py-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="uppercase tracking-[0.25em] text-copper text-xs font-mono mb-1">Tecnologia i Digitalització · ESO</p>
+        <h1 class="text-2xl sm:text-3xl font-bold">Circuits elèctrics mixtos</h1>
+        <p class="text-sm text-paper/70 mt-1 max-w-xl">Calcula resistències equivalents, intensitats i tensions en un circuit sèrie-paral·lel. Cada exercici es genera amb valors nous i aleatoris.</p>
+      </div>
+
+      <!-- Panell d'accessibilitat DUA -->
+      <div class="no-print ac-panell bg-blueprint2 rounded-xl p-3 text-xs w-full sm:w-auto">
+        <p class="font-semibold mb-2 ac-accent text-copper">Accessibilitat (DUA)</p>
+        <div class="flex flex-col gap-2">
+          <div class="flex gap-1" role="group" aria-label="Mode de contrast">
+            <button onclick="canviarAparenca('clar')" class="ac-btn px-2 py-1 rounded bg-paper text-blueprint font-medium">Clar</button>
+            <button onclick="canviarAparenca('fosc')" class="ac-btn px-2 py-1 rounded bg-blueprint border border-paper/40">Fosc</button>
+            <button onclick="canviarAparenca('contrast')" class="ac-btn px-2 py-1 rounded bg-yellow-400 text-black font-bold">Alt contrast</button>
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="chkLectura" onchange="toggleLecturaFacil()" class="w-4 h-4">
+            Lectura facilitada
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================
+     BARRA D'EINES (docent)
+     ============================================================ -->
+<div class="no-print bg-blueprint2 text-paper">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-2 text-sm">
+    <button onclick="generarExercici()" class="bg-copper hover:bg-copperdark text-white font-semibold px-4 py-2 rounded-lg shadow">↻ Nou exercici</button>
+
+    <label class="bg-blueprint px-3 py-2 rounded-lg cursor-pointer hover:bg-blueprint/70 border border-paper/20">
+      📥 Importar llista (CSV)
+      <input type="file" id="inputCSV" accept=".csv,text/csv" class="hidden" onchange="importarCSV(event)">
+    </label>
+
+    <select id="selectAlumne" onchange="canviarAlumne()" class="text-blueprint rounded-lg px-3 py-2 min-w-[10rem]">
+      <option value="">— Sense alumne seleccionat —</option>
+    </select>
+
+    <button onclick="desarResultatAlumne()" class="bg-signal hover:brightness-95 text-white font-semibold px-4 py-2 rounded-lg">💾 Desar resultat</button>
+    <button onclick="exportarCSV()" class="bg-blueprint border border-paper/30 px-4 py-2 rounded-lg hover:bg-blueprint/70">⬇ Exportar CSV</button>
+    <button onclick="window.print()" class="bg-blueprint border border-paper/30 px-4 py-2 rounded-lg hover:bg-blueprint/70">🖨 Exportar PDF / Imprimir</button>
+
+    <span id="comptadorSessio" class="ml-auto text-xs text-paper/70 font-mono"></span>
+  </div>
+</div>
+
+<!-- Capçalera només per a impressió -->
+<div class="hidden print:block max-w-6xl mx-auto px-4 pt-4">
+  <h2 class="text-xl font-bold">Fitxa d'aprenentatge — Circuits elèctrics mixtos</h2>
+  <p class="text-sm">Alumne/a: <span id="printAlumne">___________________</span> &nbsp;·&nbsp; Data: <span id="printData"></span></p>
+  <hr class="my-2">
+</div>
+
+<!-- ============================================================
+     CONTINGUT PRINCIPAL — 2 columnes (col·lapsa a mòbil)
+     ============================================================ -->
+<main class="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  <!-- ---------- COLUMNA ESQUERRA: EXERCICI ---------- -->
+  <section class="print-card bg-white/70 dark:bg-blueprint2 rounded-2xl shadow-lg p-5 border border-blueprint/10">
+    <h2 class="text-lg font-bold mb-3 flex items-center gap-2">
+      <span class="ac-accent text-copper">①</span> Esquema del circuit
+    </h2>
+
+    <!-- Esquema SVG del circuit (R1 en sèrie amb R2 // R3) -->
+    <div class="bg-blueprint rounded-xl p-4 mb-4">
+      <svg viewBox="0 0 380 180" class="w-full h-auto" role="img" aria-label="Esquema elèctric: font de tensió V, resistència R1 en sèrie amb R2 i R3 en paral·lel">
+        <!-- Fil exterior -->
+        <path class="fil-schema flux-corrent" d="M30,90 L30,30 L100,30 L100,90" stroke="#C97D3E" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <path class="fil-schema flux-corrent" d="M30,90 L30,150 L100,150 L100,90" stroke="#C97D3E" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <!-- Bateria (símbol) -->
+        <line x1="20" y1="80" x2="20" y2="100" stroke="#F4EFE3" stroke-width="4"/>
+        <line x1="12" y1="70" x2="12" y2="110" stroke="#F4EFE3" stroke-width="2"/>
+        <text x="0" y="95" fill="#F4EFE3" font-size="13" font-family="ui-monospace,monospace" id="lblV">V</text>
+
+        <!-- R1 en sèrie (zig-zag) -->
+        <path class="fil-schema" d="M100,30 L115,30 L120,20 L130,40 L140,20 L150,40 L155,30 L170,30" stroke="#C97D3E" stroke-width="3" fill="none"/>
+        <text x="105" y="16" fill="#F4EFE3" font-size="13" font-family="ui-monospace,monospace" id="lblR1">R1</text>
+
+        <!-- Node de bifurcació -->
+        <path class="fil-schema flux-corrent" d="M170,30 L230,30" stroke="#C97D3E" stroke-width="3"/>
+        <path class="fil-schema flux-corrent" d="M170,30 L170,60 M170,60 L100,60" stroke="#C97D3E" stroke-width="3" fill="none" opacity="0"/>
+
+        <!-- Branca R2 -->
+        <path class="fil-schema" d="M230,30 L230,60 L245,60 L250,50 L260,70 L270,50 L280,70 L285,60 L300,60 L300,30" stroke="#C97D3E" stroke-width="3" fill="none"/>
+        <text x="238" y="48" fill="#F4EFE3" font-size="13" font-family="ui-monospace,monospace" id="lblR2">R2</text>
+
+        <!-- Branca R3 -->
+        <path class="fil-schema" d="M230,30 L230,110 L245,110 L250,100 L260,120 L270,100 L280,120 L285,110 L300,110 L300,30" stroke="#C97D3E" stroke-width="3" fill="none"/>
+        <text x="238" y="98" fill="#F4EFE3" font-size="13" font-family="ui-monospace,monospace" id="lblR3">R3</text>
+
+        <!-- Tancament del paral·lel cap a la bateria -->
+        <path class="fil-schema flux-corrent" d="M300,30 L300,30" stroke="#C97D3E" stroke-width="3"/>
+        <path class="fil-schema flux-corrent" d="M300,30 L340,30 L340,150 L100,150" stroke="#C97D3E" stroke-width="3" fill="none"/>
+      </svg>
+      <div class="grid grid-cols-2 gap-2 mt-3 text-center font-mono text-sm">
+        <div class="bg-blueprint2 rounded-lg py-2 text-paper">V = <span id="valV" class="text-copper font-bold">–</span> V</div>
+        <div class="bg-blueprint2 rounded-lg py-2 text-paper">R1 = <span id="valR1" class="text-copper font-bold">–</span> Ω</div>
+        <div class="bg-blueprint2 rounded-lg py-2 text-paper">R2 = <span id="valR2" class="text-copper font-bold">–</span> Ω</div>
+        <div class="bg-blueprint2 rounded-lg py-2 text-paper">R3 = <span id="valR3" class="text-copper font-bold">–</span> Ω</div>
+      </div>
+    </div>
+
+    <h2 class="text-lg font-bold mb-2 flex items-center gap-2"><span class="ac-accent text-copper">②</span> Calcula i respon</h2>
+    <form id="formResposta" onsubmit="event.preventDefault(); comprovarRespostes();" class="space-y-3">
+
+      <div>
+        <label for="inReq" class="block text-sm font-medium mb-1">Resistència equivalent total (Ω)</label>
+        <div class="flex gap-2 items-center">
+          <input type="text" inputmode="decimal" id="inReq" class="flex-1 rounded-lg border border-blueprint/30 px-3 py-2 text-base" placeholder="p. ex. 45,2">
+          <span id="fbReq" class="text-xl w-6 text-center" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div>
+        <label for="inItotal" class="block text-sm font-medium mb-1">Intensitat total del circuit (A)</label>
+        <div class="flex gap-2 items-center">
+          <input type="text" inputmode="decimal" id="inItotal" class="flex-1 rounded-lg border border-blueprint/30 px-3 py-2 text-base" placeholder="p. ex. 0,53">
+          <span id="fbItotal" class="text-xl w-6 text-center" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div>
+        <label for="inI2" class="block text-sm font-medium mb-1">Intensitat que travessa R2 (A)</label>
+        <div class="flex gap-2 items-center">
+          <input type="text" inputmode="decimal" id="inI2" class="flex-1 rounded-lg border border-blueprint/30 px-3 py-2 text-base" placeholder="p. ex. 0,21">
+          <span id="fbI2" class="text-xl w-6 text-center" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div>
+        <label for="inI3" class="block text-sm font-medium mb-1">Intensitat que travessa R3 (A)</label>
+        <div class="flex gap-2 items-center">
+          <input type="text" inputmode="decimal" id="inI3" class="flex-1 rounded-lg border border-blueprint/30 px-3 py-2 text-base" placeholder="p. ex. 0,32">
+          <span id="fbI3" class="text-xl w-6 text-center" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <button type="submit" class="w-full bg-blueprint hover:bg-blueprint2 text-paper font-semibold py-3 rounded-lg text-base">✔ Comprovar respostes</button>
+    </form>
+
+    <p id="missatgeGlobal" class="text-sm mt-3 font-medium" aria-live="polite"></p>
+
+    <!-- Acordió de resolució pas a pas -->
+    <details id="acordioSolucio" class="mt-4 bg-blueprint/5 rounded-lg border border-blueprint/15">
+      <summary class="px-4 py-3 font-semibold flex items-center justify-between">
+        <span>📖 Veure resolució pas a pas</span>
+        <span class="fletxa">▶</span>
+      </summary>
+      <div id="contingutSolucio" class="px-4 pb-4 text-sm space-y-2 font-mono leading-relaxed"></div>
+    </details>
+  </section>
+
+  <!-- ---------- COLUMNA DRETA: RÚBRICA COMPETENCIAL ---------- -->
+  <section class="print-card bg-white/70 dark:bg-blueprint2 rounded-2xl shadow-lg p-5 border border-blueprint/10">
+    <h2 class="text-lg font-bold mb-1 flex items-center gap-2"><span class="ac-accent text-copper">③</span> Rúbrica competencial</h2>
+    <p class="text-xs text-blueprint/60 dark:text-paper/60 mb-3">Criteris vinculats a les competències específiques de Tecnologia i Digitalització (Decret 175/2022, d'ordenació de l'ESO a Catalunya).</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm border-collapse" id="taulaRubrica">
+        <thead>
+          <tr class="text-left border-b-2 border-blueprint/20">
+            <th class="py-2 pr-2">Competència específica</th>
+            <th class="py-2 text-center">Nivell</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-blueprint/10">
+            <td class="py-3 pr-2">
+              <span class="font-semibold">CE1 · Interpretació de circuits</span><br>
+              <span class="text-xs opacity-70">Analitza l'esquema i calcula la resistència equivalent d'un circuit mixt.</span>
+            </td>
+            <td class="py-3 text-center"><span id="badgeCE1" class="badge">Pendent</span></td>
+          </tr>
+          <tr class="border-b border-blueprint/10">
+            <td class="py-3 pr-2">
+              <span class="font-semibold">CE2 · Aplicació de la llei d'Ohm</span><br>
+              <span class="text-xs opacity-70">Relaciona tensió, resistència i intensitat en el circuit global.</span>
+            </td>
+            <td class="py-3 text-center"><span id="badgeCE2" class="badge">Pendent</span></td>
+          </tr>
+          <tr class="border-b border-blueprint/10">
+            <td class="py-3 pr-2">
+              <span class="font-semibold">CE3 · Resolució de la derivació en paral·lel</span><br>
+              <span class="text-xs opacity-70">Calcula correctament el repartiment d'intensitat entre branques.</span>
+            </td>
+            <td class="py-3 text-center"><span id="badgeCE3" class="badge">Pendent</span></td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-2">
+              <span class="font-semibold">CE4 · Rigor en el procés i les unitats</span><br>
+              <span class="text-xs opacity-70">Aplica el procediment de manera eficient, amb un ús correcte de xifres i unitats.</span>
+            </td>
+            <td class="py-3 text-center"><span id="badgeCE4" class="badge">Pendent</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-xs mt-3 opacity-70">Escala: <b>Excel·lent</b> (encert al primer intent) · <b>Notable</b> (encert en 2 intents) · <b>Satisfactori</b> (encert en 3 o més intents) · <b>No Assolit</b> (no s'ha resolt correctament).</p>
+
+    <hr class="my-4 border-blueprint/10">
+
+    <h3 class="font-bold mb-2">Resum de la sessió</h3>
+    <div id="resumSessio" class="text-sm space-y-1 font-mono"></div>
+  </section>
+</main>
+
+<footer class="no-print max-w-6xl mx-auto px-4 pb-8 text-xs text-blueprint/60 space-y-1">
+  <p>App conforme al Decret 175/2022 (ordenació de l'ESO) i al Decret 150/2017 (atenció educativa inclusiva, DUA) a Catalunya. Contingut generat i corregit 100% al navegador: cap dada surt del dispositiu.</p>
+  <p>Nota tècnica: per instal·lar l'App i disposar de catxé offline complet cal servir aquest fitxer des d'un servidor web (http/https) o instal·lar-lo com a PWA; obert directament com a fitxer local, els navegadors poden restringir el Service Worker per motius de seguretat, però l'App segueix funcionant amb normalitat.</p>
+</footer>
+
+<style>
+  .badge { display:inline-block; padding:.25rem .75rem; border-radius:9999px; font-weight:600; font-size:.75rem; }
+  .badge-pendent   { background:#e5e0d3; color:#5b5648; }
+  .badge-excellent { background:#3FA97E; color:#fff; }
+  .badge-notable   { background:#4C86C9; color:#fff; }
+  .badge-satis     { background:#D9A441; color:#1a1a1a; }
+  .badge-noassolit { background:#C1443B; color:#fff; }
+</style>
+
+<script>
+/* ================================================================
+   1) GENERACIÓ DINÀMICA DEL MANIFEST (Data URL) I DEL SERVICE WORKER
+      (Blob) — PERMET INSTAL·LAR L'APP I FUNCIONAR SENSE CONNEXIÓ
+   ================================================================ */
+
+// Icona vectorial reutilitzada per al manifest (mateix disseny que el favicon)
+const ICONA_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+  <rect width='64' height='64' rx='10' fill='#0B1F33'/>
+  <path d='M8 32h10l4-10 8 20 4-10 8 10h14' stroke='#C97D3E' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+</svg>`;
+const ICONA_DATAURL = 'data:image/svg+xml,' + encodeURIComponent(ICONA_SVG);
+
+// 1.1 Manifest: objecte JS -> Data URL (segons requereix l'especificació)
+const manifestObjecte = {
+  name: "Circuits Elèctrics Mixtos - Tecnologia",
+  short_name: "Circuits Mixtos",
+  description: "Practica el càlcul de circuits mixtos amb correcció i rúbrica automàtiques.",
+  start_url: ".",
+  display: "standalone",
+  orientation: "any",
+  background_color: "#0B1F33",
+  theme_color: "#0B1F33",
+  lang: "ca",
+  icons: [
+    { src: ICONA_DATAURL, sizes: "192x192", type: "image/svg+xml", purpose: "any" },
+    { src: ICONA_DATAURL, sizes: "512x512", type: "image/svg+xml", purpose: "any maskable" }
+  ]
+};
+const manifestDataURL = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(manifestObjecte));
+document.getElementById('manifestLink').setAttribute('href', manifestDataURL);
+
+// 1.2 Service Worker: codi complet com a cadena de text -> Blob -> registre
+//     Estratègia: "cache-first" per al recurs de Tailwind (CDN) i
+//     "network-first amb reserva a catxé" per a la resta (mateix origen).
+const CODI_SERVICE_WORKER = `
+  const NOM_CATXE = 'circuits-mixtos-catxe-v1';
+
+  // En instal·lar-se, intentem deixar en catxé Tailwind (recurs extern)
+  self.addEventListener('install', (event) => {
+    self.skipWaiting();
+    event.waitUntil(
+      caches.open(NOM_CATXE).then((catxe) => {
+        return catxe.addAll(['https://cdn.tailwindcss.com']).catch(() => {
+          // Si no hi ha connexió en el primer arrencament, no fem res:
+          // es tornarà a intentar en la següent petició amb èxit.
+        });
+      })
+    );
+  });
+
+  self.addEventListener('activate', (event) => {
+    event.waitUntil(clients.claim());
+  });
+
+  self.addEventListener('fetch', (event) => {
+    const url = event.request.url;
+
+    // Recursos de Tailwind CDN: primer catxé, si falla anem a xarxa i actualitzem catxé
+    if (url.includes('cdn.tailwindcss.com')) {
+      event.respondWith(
+        caches.match(event.request).then((resposta) => {
+          const fetchXarxa = fetch(event.request).then((res) => {
+            caches.open(NOM_CATXE).then((c) => c.put(event.request, res.clone()));
+            return res;
+          }).catch(() => resposta);
+          return resposta || fetchXarxa;
+        })
+      );
+      return;
+    }
+
+    // Mateix origen (la pròpia app): xarxa primer, catxé com a reserva offline
+    if (event.request.method === 'GET' && url.startsWith(self.location.origin)) {
+      event.respondWith(
+        fetch(event.request).then((res) => {
+          caches.open(NOM_CATXE).then((c) => c.put(event.request, res.clone()));
+          return res;
+        }).catch(() => caches.match(event.request))
+      );
+    }
+  });
+`;
+
+// 1.3 Registre del Service Worker generat com a Blob en memòria
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    try {
+      const blobSW = new Blob([CODI_SERVICE_WORKER], { type: 'text/javascript' });
+      const urlSW = URL.createObjectURL(blobSW);
+      navigator.serviceWorker.register(urlSW).catch((err) => {
+        console.warn('No s\'ha pogut registrar el Service Worker (probablement per obrir-se com a fitxer local):', err);
+      });
+    } catch (e) {
+      console.warn('Service Worker no disponible en aquest context:', e);
+    }
+  });
+}
+
+/* ================================================================
+   2) LÒGICA DE L'APLICACIÓ: GENERACIÓ D'EXERCICIS I CORRECCIÓ
+   ================================================================ */
+
+// Estat de l'exercici actual
+let exercici = null;          // dades numèriques generades
+let intents = { Req: 0, Itotal: 0, I2: 0, I3: 0 };   // nombre d'intents per camp
+let encertat = { Req: false, Itotal: false, I2: false, I3: false };
+let solucioMostrada = false;  // si l'alumne ha obert la resolució (compta com a "No Assolit" si no ha encertat abans)
+
+let alumnatClasse = [];       // llista importada per CSV
+let alumneActual = "";
+let resultatsSessio = [];     // files acumulades per exportar a CSV
+
+// --- Utilitats numèriques ---
+
+// Enter aleatori múltiple de "pas" dins un rang [min,max]
+function enterAleatori(min, max, pas) {
+  const n = Math.floor(Math.random() * ((max - min) / pas + 1));
+  return min + n * pas;
+}
+
+// Arrodoneix protegint contra decimals infinits / NaN / Infinity
+function arrodonir(valor, decimals) {
+  if (!isFinite(valor)) return 0;
+  const factor = Math.pow(10, decimals === undefined ? 2 : decimals);
+  return Math.round(valor * factor) / factor;
+}
+
+// Interpreta l'entrada de l'alumne acceptant coma o punt com a decimal
+function llegirNumero(text) {
+  if (text === null || text === undefined || text.trim() === '') return NaN;
+  return parseFloat(text.trim().replace(',', '.'));
+}
+
+// Compara la resposta amb tolerància (evita exigir precisió excessiva)
+function esCorrecte(resposta, correcte) {
+  if (isNaN(resposta)) return false;
+  if (Math.abs(correcte) < 0.0001) return Math.abs(resposta) <= 0.05;
+  const errorRelatiu = Math.abs(resposta - correcte) / Math.abs(correcte);
+  return errorRelatiu <= 0.03 || Math.abs(resposta - correcte) <= 0.05;
+}
+
+// --- Generació d'un nou exercici ---
+function generarExercici() {
+  // Valors "bonics" per a un enunciat llegible, però que generen
+  // resultats amb decimals reals (per això s'arrodoneix sempre a la sortida)
+  const V  = [12, 18, 24, 36, 48][Math.floor(Math.random() * 5)];
+  const R1 = enterAleatori(10, 60, 5);
+  const R2 = enterAleatori(20, 100, 5);
+  const R3 = enterAleatori(20, 100, 5);
+
+  // Protecció explícita contra divisió per zero (R2+R3 mai és 0 amb aquests rangs,
+  // però es manté la comprovació per robustesa del codi)
+  const sumaParalel = (R2 + R3) === 0 ? 1 : (R2 + R3);
+
+  const Req23    = (R2 * R3) / sumaParalel;
+  const ReqTotal = R1 + Req23;
+  const Itotal   = ReqTotal === 0 ? 0 : V / ReqTotal;
+  const V1       = Itotal * R1;
+  const V23      = V - V1;
+  const I2       = R2 === 0 ? 0 : V23 / R2;
+  const I3       = R3 === 0 ? 0 : V23 / R3;
+  const Ptotal   = V * Itotal;
+
+  exercici = {
+    V, R1, R2, R3,
+    Req23: arrodonir(Req23, 2),
+    ReqTotal: arrodonir(ReqTotal, 2),
+    Itotal: arrodonir(Itotal, 3),
+    V1: arrodonir(V1, 2),
+    V23: arrodonir(V23, 2),
+    I2: arrodonir(I2, 3),
+    I3: arrodonir(I3, 3),
+    Ptotal: arrodonir(Ptotal, 2)
+  };
+
+  // Reiniciem intents i estat de correcció
+  intents = { Req: 0, Itotal: 0, I2: 0, I3: 0 };
+  encertat = { Req: false, Itotal: false, I2: false, I3: false };
+  solucioMostrada = false;
+
+  // Pintem els valors a l'esquema
+  document.getElementById('lblV').textContent = V + 'V';
+  document.getElementById('lblR1').textContent = 'R1';
+  document.getElementById('lblR2').textContent = 'R2';
+  document.getElementById('lblR3').textContent = 'R3';
+  document.getElementById('valV').textContent = V;
+  document.getElementById('valR1').textContent = R1;
+  document.getElementById('valR2').textContent = R2;
+  document.getElementById('valR3').textContent = R3;
+
+  // Netegem el formulari i els indicadors
+  ['inReq','inItotal','inI2','inI3'].forEach(id => document.getElementById(id).value = '');
+  ['fbReq','fbItotal','fbI2','fbI3'].forEach(id => document.getElementById(id).textContent = '');
+  document.getElementById('missatgeGlobal').textContent = '';
+  document.getElementById('acordioSolucio').open = false;
+  document.getElementById('contingutSolucio').innerHTML = '';
+
+  actualitzarRubrica();
+}
+
+// --- Comprovació de respostes ---
+function comprovarRespostes() {
+  if (!exercici) { generarExercici(); return; }
+
+  const camps = [
+    { id: 'Req',    input: 'inReq',    correcte: exercici.ReqTotal, fb: 'fbReq' },
+    { id: 'Itotal', input: 'inItotal', correcte: exercici.Itotal,   fb: 'fbItotal' },
+    { id: 'I2',     input: 'inI2',     correcte: exercici.I2,       fb: 'fbI2' },
+    { id: 'I3',     input: 'inI3',     correcte: exercici.I3,       fb: 'fbI3' },
+  ];
+
+  let totsCorrectes = true;
+
+  camps.forEach(c => {
+    // Si ja estava encertat, no tornem a comptar l'intent
+    if (encertat[c.id]) return;
+
+    const valor = llegirNumero(document.getElementById(c.input).value);
+    const ok = esCorrecte(valor, c.correcte);
+    const span = document.getElementById(c.fb);
+
+    if (isNaN(valor)) {
+      span.textContent = '…';
+      span.className = 'text-xl w-6 text-center text-blueprint/40';
+      totsCorrectes = false;
+      return;
+    }
+
+    intents[c.id]++;
+    if (ok) {
+      encertat[c.id] = true;
+      span.textContent = '✔';
+      span.className = 'text-xl w-6 text-center text-signal font-bold';
+    } else {
+      span.textContent = '✘';
+      span.className = 'text-xl w-6 text-center text-alert font-bold';
+      totsCorrectes = false;
+    }
+  });
+
+  const missatge = document.getElementById('missatgeGlobal');
+  const totsEncertats = Object.values(encertat).every(v => v === true);
+
+  if (totsEncertats) {
+    missatge.textContent = '✅ Molt bé! Has resolt correctament tot el circuit.';
+    missatge.className = 'text-sm mt-3 font-medium text-signal';
+  } else {
+    const intentsTotals = Object.values(intents).reduce((a,b)=>a+b,0);
+    missatge.textContent = intentsTotals >= 3
+      ? '🔎 Encara hi ha errors. Obre la resolució pas a pas per revisar el procediment.'
+      : '↻ Alguna resposta no és correcta. Revisa els càlculs i torna-ho a provar.';
+    missatge.className = 'text-sm mt-3 font-medium text-alert';
+  }
+
+  generarPassosSolucio();
+  actualitzarRubrica();
+}
+
+// --- Generació del text de resolució pas a pas ---
+function generarPassosSolucio() {
+  if (!exercici) return;
+  const e = exercici;
+  const html = `
+    <p><b>1. Tram en paral·lel (R2 i R3):</b><br>
+       Req(2,3) = (R2 · R3) / (R2 + R3) = (${e.R2} · ${e.R3}) / (${e.R2} + ${e.R3}) = <b>${e.Req23} Ω</b></p>
+    <p><b>2. Resistència equivalent total:</b><br>
+       ReqTotal = R1 + Req(2,3) = ${e.R1} + ${e.Req23} = <b>${e.ReqTotal} Ω</b></p>
+    <p><b>3. Intensitat total (Llei d'Ohm):</b><br>
+       I total = V / ReqTotal = ${e.V} / ${e.ReqTotal} = <b>${e.Itotal} A</b></p>
+    <p><b>4. Caiguda de tensió a R1:</b><br>
+       V1 = I total · R1 = ${e.Itotal} · ${e.R1} = <b>${e.V1} V</b></p>
+    <p><b>5. Tensió disponible al tram paral·lel:</b><br>
+       V(2,3) = V − V1 = ${e.V} − ${e.V1} = <b>${e.V23} V</b></p>
+    <p><b>6. Intensitats de cada branca:</b><br>
+       I2 = V(2,3) / R2 = ${e.V23} / ${e.R2} = <b>${e.I2} A</b><br>
+       I3 = V(2,3) / R3 = ${e.V23} / ${e.R3} = <b>${e.I3} A</b></p>
+    <p><b>7. Potència total consumida:</b><br>
+       P = V · I total = ${e.V} · ${e.Itotal} = <b>${e.Ptotal} W</b></p>
+  `;
+  document.getElementById('contingutSolucio').innerHTML = html;
+}
+
+document.getElementById('acordioSolucio').addEventListener('toggle', function () {
+  if (this.open) solucioMostrada = true;
+  actualitzarRubrica();
+});
+
+/* ================================================================
+   3) RÚBRICA COMPETENCIAL INTERACTIVA
+   ================================================================ */
+
+// Determina el nivell d'assoliment d'un criteri a partir del
+// nombre d'intents necessaris i de si s'ha hagut de consultar la solució
+function nivellPerIntents(nCorrecte, nIntents) {
+  if (!nCorrecte) {
+    return (nIntents > 0 || solucioMostrada) ? 'No Assolit' : 'Pendent';
+  }
+  if (nIntents <= 1) return 'Excel·lent';
+  if (nIntents === 2) return 'Notable';
+  return 'Satisfactori';
+}
+
+function pintarBadge(idBadge, nivell) {
+  const span = document.getElementById(idBadge);
+  span.textContent = nivell;
+  span.className = 'badge ' + {
+    'Pendent':    'badge-pendent',
+    'Excel·lent': 'badge-excellent',
+    'Notable':    'badge-notable',
+    'Satisfactori':'badge-satis',
+    'No Assolit': 'badge-noassolit'
+  }[nivell];
+}
+
+function actualitzarRubrica() {
+  // CE1 -> resistència equivalent total
+  const nivellCE1 = nivellPerIntents(encertat.Req, intents.Req);
+  // CE2 -> intensitat total (llei d'Ohm)
+  const nivellCE2 = nivellPerIntents(encertat.Itotal, intents.Itotal);
+  // CE3 -> derivació en paral·lel: cal encertar TOTES DUES intensitats;
+  //        es pren el pitjor (més gran) nombre d'intents entre I2 i I3
+  const okCE3 = encertat.I2 && encertat.I3;
+  const intentsCE3 = Math.max(intents.I2, intents.I3);
+  const nivellCE3 = nivellPerIntents(okCE3, intentsCE3);
+  // CE4 -> rigor i eficiència global: es valora el conjunt d'intents totals
+  const totalIntents = intents.Req + intents.Itotal + intents.I2 + intents.I3;
+  const totsFets = encertat.Req && encertat.Itotal && encertat.I2 && encertat.I3;
+  let nivellCE4 = 'Pendent';
+  if (totsFets) {
+    if (totalIntents <= 4) nivellCE4 = 'Excel·lent';
+    else if (totalIntents <= 6) nivellCE4 = 'Notable';
+    else nivellCE4 = 'Satisfactori';
+  } else if (solucioMostrada) {
+    nivellCE4 = 'No Assolit';
+  }
+
+  pintarBadge('badgeCE1', nivellCE1);
+  pintarBadge('badgeCE2', nivellCE2);
+  pintarBadge('badgeCE3', nivellCE3);
+  pintarBadge('badgeCE4', nivellCE4);
+
+  document.getElementById('resumSessio').innerHTML =
+    `Alumne/a actual: <b>${alumneActual || '—'}</b><br>` +
+    `Intents totals: <b>${totalIntents}</b> · Encerts: <b>${Object.values(encertat).filter(v=>v).length}/4</b><br>` +
+    `Resultats desats en aquesta sessió: <b>${resultatsSessio.length}</b>`;
+}
+
+/* ================================================================
+   4) IMPORTACIÓ / EXPORTACIÓ DE DADES (100% LOCAL, CLIENT-SIDE)
+   ================================================================ */
+
+// 4.1 Importació d'un CSV de classe, tolerant a coma o punt i coma
+//     Sempre pren la PRIMERA COLUMNA com a nom de l'alumne/a,
+//     independentment de com es digui la capçalera.
+function importarCSV(event) {
+  const fitxer = event.target.files[0];
+  if (!fitxer) return;
+
+  const lector = new FileReader();
+  lector.onload = function (e) {
+    const text = e.target.result;
+    const linies = text.split(/\\r\\n|\\n|\\r/).filter(l => l.trim() !== '');
+    if (linies.length === 0) return;
+
+    // Detecció automàtica del delimitador comparant ocurrències a la capçalera
+    const capçalera = linies[0];
+    const nComes = (capçalera.match(/,/g) || []).length;
+    const nPuntComa = (capçalera.match(/;/g) || []).length;
+    const delimitador = nPuntComa > nComes ? ';' : ',';
+
+    // Descartem la primera línia (capçalera) i agafem sempre la 1a columna
+    alumnatClasse = linies.slice(1)
+      .map(linia => linia.split(delimitador)[0].trim().replace(/^"|"$/g, ''))
+      .filter(nom => nom !== '');
+
+    const select = document.getElementById('selectAlumne');
+    select.innerHTML = '<option value="">— Sense alumne seleccionat —</option>' +
+      alumnatClasse.map(nom => `<option value="${nom}">${nom}</option>`).join('');
+
+    document.getElementById('missatgeGlobal').textContent =
+      `📥 S'han importat ${alumnatClasse.length} alumnes des del CSV.`;
+    document.getElementById('missatgeGlobal').className = 'text-sm mt-3 font-medium text-signal';
+  };
+  lector.readAsText(fitxer, 'UTF-8');
+}
+
+function canviarAlumne() {
+  alumneActual = document.getElementById('selectAlumne').value;
+  document.getElementById('printAlumne').textContent = alumneActual || '___________________';
+  actualitzarRubrica();
+}
+
+// 4.2 Desa el resultat actual de l'alumne seleccionat a la sessió
+function desarResultatAlumne() {
+  if (!exercici) { alert('Genera primer un exercici.'); return; }
+  if (!alumneActual) { alert('Selecciona o escriu primer el nom de l\'alumne/a.'); return; }
+
+  const getNivell = (idBadge) => document.getElementById(idBadge).textContent;
+
+  resultatsSessio.push({
+    alumne: alumneActual,
+    dataHora: new Date().toLocaleString('ca-ES'),
+    ReqAlumne: document.getElementById('inReq').value || '',
+    ReqCorrecte: exercici.ReqTotal,
+    ItotalAlumne: document.getElementById('inItotal').value || '',
+    ItotalCorrecte: exercici.Itotal,
+    I2Alumne: document.getElementById('inI2').value || '',
+    I2Correcte: exercici.I2,
+    I3Alumne: document.getElementById('inI3').value || '',
+    I3Correcte: exercici.I3,
+    CE1: getNivell('badgeCE1'),
+    CE2: getNivell('badgeCE2'),
+    CE3: getNivell('badgeCE3'),
+    CE4: getNivell('badgeCE4'),
+  });
+
+  document.getElementById('missatgeGlobal').textContent = `💾 Resultat de ${alumneActual} desat a la sessió.`;
+  document.getElementById('missatgeGlobal').className = 'text-sm mt-3 font-medium text-signal';
+  actualitzarRubrica();
+}
+
+// 4.3 Exportació CSV (UTF-8, delimitador ';' per compatibilitat amb Excel en català)
+function exportarCSV() {
+  if (resultatsSessio.length === 0) {
+    alert('Encara no hi ha cap resultat desat. Usa el botó "Desar resultat" per a cada alumne/a.');
+    return;
+  }
+  const capçaleres = ['Alumne','Data','Req_alumne','Req_correcte','Itotal_alumne','Itotal_correcte',
+                       'I2_alumne','I2_correcte','I3_alumne','I3_correcte','CE1','CE2','CE3','CE4'];
+  const files = resultatsSessio.map(r => [
+    r.alumne, r.dataHora, r.ReqAlumne, r.ReqCorrecte, r.ItotalAlumne, r.ItotalCorrecte,
+    r.I2Alumne, r.I2Correcte, r.I3Alumne, r.I3Correcte, r.CE1, r.CE2, r.CE3, r.CE4
+  ].join(';'));
+
+  const contingutCSV = '\\uFEFF' + capçaleres.join(';') + '\\n' + files.join('\\n'); // \\uFEFF = BOM UTF-8
+
+  const blob = new Blob([contingutCSV], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const enllaç = document.createElement('a');
+  enllaç.href = url;
+  enllaç.download = 'resultats_circuits_mixtos.csv';
+  document.body.appendChild(enllaç);
+  enllaç.click();
+  document.body.removeChild(enllaç);
+  URL.revokeObjectURL(url);
+}
+
+/* ================================================================
+   5) ACCESSIBILITAT DUA: APARENÇA I LECTURA FACILITADA
+   ================================================================ */
+function canviarAparenca(mode) {
+  const body = document.body;
+  body.classList.remove('dark', 'alt-contrast');
+  if (mode === 'fosc') body.classList.add('dark');
+  if (mode === 'contrast') body.classList.add('alt-contrast');
+  // 'clar' no afegeix cap classe: és l'estat per defecte
+}
+
+function toggleLecturaFacil() {
+  document.body.classList.toggle('lectura-facil', document.getElementById('chkLectura').checked);
+}
+
+/* ================================================================
+   6) INICIALITZACIÓ
+   ================================================================ */
+document.getElementById('printData').textContent = new Date().toLocaleDateString('ca-ES');
+generarExercici();
+</script>
+</body>
+</html>
